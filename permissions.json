@@ -1,0 +1,8 @@
+{
+  "objects": "ABCDEF",
+  "users": {
+    "user001": "AB",
+    "user002": "ACEF",
+    "user003": "DEF"
+  }
+}
