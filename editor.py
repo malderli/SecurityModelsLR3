@@ -12,8 +12,6 @@ class Editor(QWidget):
         super(Editor, self).__init__()
 
         self.permissions = None # {}
-        self.objects = None # []
-        self.users = None # []
 
         self.currentUser = None # ""
         self.currentObjects = None # []
@@ -125,8 +123,6 @@ class Editor(QWidget):
         self.cbUserSelect.clear()
 
         self.permissions = None
-        self.objects = None
-        self.users = None
 
         self.currentUser = None
         self.currentObjects = None
@@ -136,24 +132,24 @@ class Editor(QWidget):
                 permissions = json.loads(fs.read())
 
                 self.permissions = permissions
-                self.objects = list(permissions['objects'])
-                self.users = list(permissions['users'].keys())
+                objects = list(permissions['objects'])
+                users = list(permissions['users'].keys())
 
                 # Filling permissions table
-                self.twPermissions.setColumnCount(len(self.objects))
-                self.twPermissions.setHorizontalHeaderLabels(self.objects)
-                self.twPermissions.setRowCount(len(self.users))
-                self.twPermissions.setVerticalHeaderLabels(self.users)
+                self.twPermissions.setColumnCount(len(objects))
+                self.twPermissions.setHorizontalHeaderLabels(objects)
+                self.twPermissions.setRowCount(len(users))
+                self.twPermissions.setVerticalHeaderLabels(users)
                 self.twPermissions.resizeColumnsToContents()
 
-                for oid, obj in enumerate(self.objects):
-                    for uid, user in enumerate(self.users):
+                for oid, obj in enumerate(objects):
+                    for uid, user in enumerate(users):
                         if obj in self.permissions['users'][user]:
                             self.twPermissions.setItem(uid, oid, QTableWidgetItem("+"))
 
                 # Adding users to selector
                 self.cbUserSelect.clear()
-                self.cbUserSelect.addItems(self.users)
+                self.cbUserSelect.addItems(users)
 
                 self.currentUser = self.cbUserSelect.currentText()
                 self.currentObjects = self.permissions['users'][self.currentUser]
@@ -162,6 +158,10 @@ class Editor(QWidget):
 
         except:
             pass
+
+    def savePermissions(self):
+        with open(self.lePermissionsFilePath.text(), "w") as fs:
+            json.dump(self.permissions, fs)
 
     def cbUserSelectIndexChanged(self, user):
         self.lblAvailable.setText("Доступно: ")
@@ -240,6 +240,9 @@ class Editor(QWidget):
         self.teTextChanged()
 
     def executeCommand(self):
+        if self.permissions is None:
+            return
+
         command = self.leCommands.text()
         command = command.replace(' ', '')
 
@@ -247,27 +250,79 @@ class Editor(QWidget):
 
         if not re.match('^Grant\(.+,.+\)$', command) is None:
             user = command[command.rindex('(')+1:command.rindex(',')]
-            prev = command[command.rindex(',')+1:command.rindex(')')]
+            prev = list(command[command.rindex(',') + 1:command.rindex(')')])
 
-            print(user, prev)
+            if user not in self.permissions['users']:
+                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь не найден', QMessageBox.Ok)
+                return
+
+            for letter in prev:
+                if letter not in self.permissions['objects']:
+                    self.permissions['objects'] = self.permissions['objects'] + letter
+
+                if letter not in self.permissions['users'][user]:
+                    self.permissions['users'][user] = self.permissions['users'][user] + letter
+
+            self.savePermissions()
+            self.loadPermissions()
 
         elif not re.match('^Revoke\(.+,.+\)$', command) is None:
             user = command[command.rindex('(') + 1:command.rindex(',')]
-            prev = command[command.rindex(',') + 1:command.rindex(')')]
+            prev = list(command[command.rindex(',') + 1:command.rindex(')')])
 
-            print(user, prev)
+            if user not in self.permissions['users']:
+                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь не найден', QMessageBox.Ok)
+                return
+
+            for letter in prev:
+                self.permissions['users'][user] = self.permissions['users'][user].replace(letter, '')
+
+            for letter in prev:
+                contains = False
+
+                for ur, pm in self.permissions['users'].items():
+                    if letter in pm:
+                        contains = True
+                        break
+
+                if not contains:
+                    self.permissions['objects'] = self.permissions['objects'].replace(letter, '')
 
         elif not re.match('^Create\(.+\)$', command) is None:
-            user = command[command.rindex('(') + 1:command.rindex(',')]
+            user = command[command.rindex('(') + 1:command.rindex(')')]
 
-            print(user)
+            if user not in self.permissions['users']:
+                self.permissions['users'][user] = ''
+            else:
+                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь уже существует', QMessageBox.Ok)
+                return
 
         elif not re.match('^Remove\(.+\)$', command) is None:
-            user = command[command.rindex('(') + 1:command.rindex(',')]
+            user = command[command.rindex('(') + 1:command.rindex(')')]
 
-            print(user)
+            if user not in self.permissions['users']:
+                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь не существует', QMessageBox.Ok)
+            else:
+                self.permissions['users'].pop(user)
+
+            for letter in self.permissions['objects']:
+                contains = False
+
+                for ur, pm in self.permissions['users'].items():
+                    if letter in pm:
+                        contains = True
+                        break
+
+                if not contains:
+                    self.permissions['objects'] = self.permissions['objects'].replace(letter, '')
 
         else:
             QMessageBox.warning(None, 'Неверный формат команды', 'Неверный формат команды', QMessageBox.Ok)
+            return
+
+        self.savePermissions()
+        self.loadPermissions()
+
+        QMessageBox.information(None, 'Успех', 'Команда успешно выполнена', QMessageBox.Ok)
 
         self.loadPermissions()

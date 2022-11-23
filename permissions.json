@@ -1,8 +1,1 @@
-{
-  "objects": "ABCDEF",
-  "users": {
-    "user001": "AB",
-    "user002": "ACEF",
-    "user003": "DEF"
-  }
-}
+{"objects": "ABCDEFK", "users": {"user001": "ABCDEF", "user002": "ADF", "user003": "KEF"}}
