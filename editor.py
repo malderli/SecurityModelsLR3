@@ -18,7 +18,7 @@ class Editor(QWidget):
 
         self.teTextLen = 0
 
-        self.setWindowTitle('МБКС ЛР2 | Лазарев Михайлин')
+        self.setWindowTitle('МБКС ЛР3 | Лазарев Михайлин')
         self.setMinimumWidth(500)
 
         # +++++++++++++++++++++++++++ Folders +++++++++++++++++++++++++++
@@ -44,10 +44,9 @@ class Editor(QWidget):
         self.twPermissions = QTableWidget()
         self.twPermissions.setAlternatingRowColors(True)
         self.leCommands = QLineEdit()
-        self.leCommands.setToolTip('Grant (subj, priv, array[1..n])\n'
-                                   'Revoke (subj, priv, array[1..n])\n'
-                                   'Create (subj, array[1..n])\n'
-                                   'Remove (subj, array[1..n])')
+        self.leCommands.setToolTip('Grant (subj1, subj2, array[1..n])\n'
+                                   'Remove (subj, array[1..n])\n'
+                                   'Create (subj, array[1..n])\n')
         self.btnExecuteCommand = QPushButton('Выполнить')
 
         self.lytPermissions.addWidget(self.twPermissions, 0, 0, 1, 3)
@@ -248,36 +247,72 @@ class Editor(QWidget):
 
         # Really bad regexps, but its only 2 hours to sleep left
 
-        if not re.match('^Grant\(.+,.+\)$', command) is None:
-            user = command[command.rindex('(')+1:command.rindex(',')]
+        if not re.match('^Grant\(.+,.+,.+\)$', command) is None:
+            user1 = command[command.rindex('(')+1:command.index(',')]
+            user2 = command[command.index(',')+1:command.rindex(',')]
             prev = list(command[command.rindex(',') + 1:command.rindex(')')])
 
-            if user not in self.permissions['users']:
-                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь не найден', QMessageBox.Ok)
+            if user1 not in self.permissions['users']:
+                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь не найден: ' + user1, QMessageBox.Ok)
+                return
+            if user2 not in self.permissions['users']:
+                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь не найден: ' + user2, QMessageBox.Ok)
                 return
 
             for letter in prev:
                 if letter not in self.permissions['objects']:
-                    self.permissions['objects'] = self.permissions['objects'] + letter
+                    QMessageBox.warning(None, 'Ошибка исполнения', 'Объект не существует: ' + letter, QMessageBox.Ok)
+                    return
 
-                if letter not in self.permissions['users'][user]:
-                    self.permissions['users'][user] = self.permissions['users'][user] + letter
+                if letter not in self.permissions['users'][user1]:
+                    QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь не имеет прав на объект: ' + letter,
+                                        QMessageBox.Ok)
+
+                if letter not in self.permissions['users'][user2]:
+                    self.permissions['users'][user2] = self.permissions['users'][user2] + letter
 
             self.savePermissions()
             self.loadPermissions()
 
-        elif not re.match('^Revoke\(.+,.+\)$', command) is None:
+        # Create object
+        elif not re.match('^Create\(.+,.+\)$', command) is None:
             user = command[command.rindex('(') + 1:command.rindex(',')]
-            prev = list(command[command.rindex(',') + 1:command.rindex(')')])
+            object = command[command.rindex(',') + 1:command.rindex(')')]
 
             if user not in self.permissions['users']:
-                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь не найден', QMessageBox.Ok)
+                self.permissions['users'][user] = object
+
+                for letter in object:
+                    if letter not in self.permissions['objects']:
+                        self.permissions['objects'] = self.permissions['objects'] + letter
+            else:
+                for letter in object:
+                    if letter not in self.permissions['users'][user]:
+                        self.permissions['users'][user] = self.permissions['users'][user] + letter
+
+                    if letter not in self.permissions['objects']:
+                        self.permissions['objects'] = self.permissions['objects'] + letter
+
+        # Create user
+        elif not re.match('^Create\(.+\)$', command) is None:
+            user = command[command.rindex('(') + 1:command.rindex(')')]
+
+            if user not in self.permissions['users']:
+                self.permissions['users'][user] = ''
+            else:
+                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь уже существует', QMessageBox.Ok)
                 return
 
-            for letter in prev:
-                self.permissions['users'][user] = self.permissions['users'][user].replace(letter, '')
+        elif not re.match('^Remove\(.+,.+\)$', command) is None:
+            user = command[command.rindex('(') + 1:command.rindex(',')]
+            object = command[command.rindex(',') + 1:command.rindex(')')]
 
-            for letter in prev:
+            if user not in self.permissions['users']:
+                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь не существует', QMessageBox.Ok)
+                return
+
+            for letter in object:
+                self.permissions['users'][user] = self.permissions['users'][user].replace(letter, '')
                 contains = False
 
                 for ur, pm in self.permissions['users'].items():
@@ -288,24 +323,18 @@ class Editor(QWidget):
                 if not contains:
                     self.permissions['objects'] = self.permissions['objects'].replace(letter, '')
 
-        elif not re.match('^Create\(.+\)$', command) is None:
-            user = command[command.rindex('(') + 1:command.rindex(')')]
-
-            if user not in self.permissions['users']:
-                self.permissions['users'][user] = ''
-            else:
-                QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь уже существует', QMessageBox.Ok)
-                return
-
         elif not re.match('^Remove\(.+\)$', command) is None:
             user = command[command.rindex('(') + 1:command.rindex(')')]
 
             if user not in self.permissions['users']:
                 QMessageBox.warning(None, 'Ошибка исполнения', 'Пользователь не существует', QMessageBox.Ok)
+                return
             else:
+                objects = self.permissions['users'][user]
+
                 self.permissions['users'].pop(user)
 
-            for letter in self.permissions['objects']:
+            for letter in objects:
                 contains = False
 
                 for ur, pm in self.permissions['users'].items():
